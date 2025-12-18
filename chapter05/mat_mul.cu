@@ -9,7 +9,7 @@ inline unsigned int cdiv(unsigned int a, unsigned int b) {
 	return (a + b - 1) / b;
 }
 
-__global__ void mat_mul(long* x, long* y, long* z, int M, int N, int K) {
+__global__ void tiled_mat_mul(long* x, long* y, long* z, int M, int N, int K) {
 	__shared__ long A_s[TILE_DIM][TILE_DIM];
 	__shared__ long B_s[TILE_DIM][TILE_DIM];
 
@@ -124,7 +124,7 @@ int main() {
 
 	for( i=0; i<M*K; i++) 
 		z[i] = 0;
-    mat_mul<<<dimGrid, dimBlock>>>(x_d, y_d, z_d, M, N, K);
+    tiled_mat_mul<<<dimGrid, dimBlock>>>(x_d, y_d, z_d, M, N, K);
 	cudaMemcpy(z, z_d, M*K*sizeof(long), cudaMemcpyDeviceToHost);
 
 #ifdef DEBUG_FLAG
