@@ -43,6 +43,14 @@ int main() {
 	}
 
 	printf("OK\n");
+
+	free(x);
+	free(y);
+	free(z);
+
+	cudaFree(x_d);
+	cudaFree(y_d);
+	cudaFree(z_d);
     
     return 0;
 }
