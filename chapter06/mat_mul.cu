@@ -10,7 +10,7 @@ inline unsigned int cdiv(unsigned int a, unsigned int b) {
 	return (a + b - 1) / b;
 }
 
-__global__ void tiled_mat_mul(int* x, int* y, int* z, int M, int N, int K) {
+__global__ void tiled_mat_mul_thread_coarsening(int* x, int* y, int* z, int M, int N, int K) {
 	__shared__ int A_s[TILE_DIM][TILE_DIM];
 	__shared__ int B_s[TILE_DIM][TILE_DIM];
 
@@ -128,7 +128,7 @@ int main() {
 
 	for( i=0; i<M*K; i++) 
 		z[i] = 0;
-	tiled_mat_mul<<<dimGrid, dimBlock>>>(x_d, y_d, z_d, M, N, K);
+	tiled_mat_mul_thread_coarsening<<<dimGrid, dimBlock>>>(x_d, y_d, z_d, M, N, K);
 	cudaMemcpy(z, z_d, M*K*sizeof(int), cudaMemcpyDeviceToHost);
 	cudaEventRecord(stop);
 
