@@ -9,14 +9,14 @@ inline unsigned int cdiv(unsigned int a, unsigned int b) {
 	return (a + b - 1) / b;
 }
 
-__global__ void tiled_mat_mul(long* x, long* y, long* z, int M, int N, int K) {
-	__shared__ long A_s[TILE_DIM][TILE_DIM];
-	__shared__ long B_s[TILE_DIM][TILE_DIM];
+__global__ void tiled_mat_mul(int* x, int* y, int* z, int M, int N, int K) {
+	__shared__ int A_s[TILE_DIM][TILE_DIM];
+	__shared__ int B_s[TILE_DIM][TILE_DIM];
 
 	int row = blockIdx.y * blockDim.y + threadIdx.y;
 	int col = blockIdx.x * blockDim.x + threadIdx.x;
 
-	long sum = 0;
+	int sum = 0;
 
 	for(unsigned int tile = 0; tile < (N+TILE_DIM-1)/TILE_DIM; ++tile) {
 		// Load tile to shared memory 
@@ -46,17 +46,17 @@ __global__ void tiled_mat_mul(long* x, long* y, long* z, int M, int N, int K) {
 
 }
 
-void mat_mul_host(long* x, long* y, long* z, int M, int N, int K) {
+void mat_mul_host(int* x, int* y, int* z, int M, int N, int K) {
 	int col, row;
 	for( row = 0; row < M; row++ ) {
 		for( col = 0; col < K; col++) {
-			long sum = 0;
+			int sum = 0;
 			int i;
 
 			for( i = 0; i < N ; i++ ){
 #ifdef DEBUG_FLAG
 				if(row==0 && col ==0)
-					printf("%ld %ld\n", x[row*N+i],y[i*K+col]);
+					printf("%d %d\n", x[row*N+i],y[i*K+col]);
 #endif
 				sum += x[row*N+i]*y[i*K+col];
 			}
@@ -66,11 +66,11 @@ void mat_mul_host(long* x, long* y, long* z, int M, int N, int K) {
 	}
 }
 
-void mat_print(long* x, int M, int K) {
+void mat_print(int* x, int M, int K) {
 	int col, row;
 	for( row = 0; row < M; row++ ) {
 		for( col = 0; col < K; col++) { 
-			printf("%ld ", x[row*K+col]);
+			printf("%d ", x[row*K+col]);
 		} 
 		printf("\n");
 	}
@@ -82,21 +82,28 @@ int main() {
 	int N = 4;
 	int K = 20;
 #else
-	int M = 1000;
-	int N = 256;
-	int K = 123;
+	int M = 16384;
+	int N = 16384;
+	int K = 16384;
 #endif
 
 	int i;
-    long *x, *y, *z;
-    long *x_d, *y_d, *z_d;
+    int *x, *y, *z;
+    int *x_d, *y_d, *z_d;
 
 	dim3 dimBlock(TILE_DIM, TILE_DIM);
 	dim3 dimGrid(cdiv(K, dimBlock.x), cdiv(M, dimBlock.y));
 
-	x = (long*) malloc( M*N*sizeof(long) );
-	y = (long*) malloc( N*K*sizeof(long) );
-	z = (long*) malloc( M*K*sizeof(long) );
+    cudaEvent_t start, stop;
+    clock_t start_host, stop_host;
+    float milliseconds = 0.0;
+
+    x = (int*) malloc( M*N*sizeof(int) );
+    y = (int*) malloc( N*K*sizeof(int) );
+    z = (int*) malloc( M*K*sizeof(int) );
+
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
 
 	for( i=0; i<M*N; i++) 
 		x[i] = i+1;
@@ -104,35 +111,55 @@ int main() {
 	for( i=0; i<N*K; i++)
 		y[i] = i+1;
 
-    cudaMalloc((void**) &x_d, M*N*sizeof(long));
-    cudaMalloc((void**) &y_d, N*K*sizeof(long));
-    cudaMalloc((void**) &z_d, M*K*sizeof(long));
+	cudaEventRecord(start);
+	cudaMalloc((void**) &x_d, M*N*sizeof(int));
+	cudaMalloc((void**) &y_d, N*K*sizeof(int));
+	cudaMalloc((void**) &z_d, M*K*sizeof(int));
 
-	cudaMemcpy(x_d, x, M*N*sizeof(long), cudaMemcpyHostToDevice);
-	cudaMemcpy(y_d, y, N*K*sizeof(long), cudaMemcpyHostToDevice);
-
-#ifdef DEBUG_FLAG
-    mat_mul_host(x, y, z, M, N, K);
-
-	printf("\n");
-    mat_print(x, M, N);
-	printf("\n");
-    mat_print(y, N, K);
-	printf("\n");
-    mat_print(z, M, K);
-#endif
+	cudaMemcpy(x_d, x, M*N*sizeof(int), cudaMemcpyHostToDevice);
+	cudaMemcpy(y_d, y, N*K*sizeof(int), cudaMemcpyHostToDevice);
 
 	for( i=0; i<M*K; i++) 
 		z[i] = 0;
-    tiled_mat_mul<<<dimGrid, dimBlock>>>(x_d, y_d, z_d, M, N, K);
-	cudaMemcpy(z, z_d, M*K*sizeof(long), cudaMemcpyDeviceToHost);
+	tiled_mat_mul<<<dimGrid, dimBlock>>>(x_d, y_d, z_d, M, N, K);
+	cudaMemcpy(z, z_d, M*K*sizeof(int), cudaMemcpyDeviceToHost);
+	cudaEventRecord(stop);
+
+	cudaEventElapsedTime(&milliseconds, start, stop);
+	printf("OK %fms\n", milliseconds);
+
+	cudaEventDestroy(start);
+	cudaEventDestroy(stop);
 
 #ifdef DEBUG_FLAG
 	printf("\n");
-    mat_print(z, M, K);
+	mat_print(x, M, N);
+	printf("\n");
+	mat_print(y, N, K);
+	printf("\n");
+	mat_print(z, M, K);
 #endif
 
-	printf("OK\n");
-    
-    return 0;
+	start_host = clock();
+	for( i=0; i<M*K; i++)
+		z[i] = 0;
+	mat_mul_host(x, y, z, M, N, K);
+	stop_host = clock();
+	printf("OK %lfms\n", ((double)stop_host - start_host)*1000 / CLOCKS_PER_SEC);
+
+#ifdef DEBUG_FLAG
+	printf("\n");
+	mat_print(z, M, K);
+	printf("\n");
+#endif
+
+	free(x);
+	free(y);
+	free(z);
+
+	cudaFree(x_d);
+	cudaFree(y_d);
+	cudaFree(z_d);
+
+	return 0;
 }
