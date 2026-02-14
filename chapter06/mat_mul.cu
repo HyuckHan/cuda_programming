@@ -15,7 +15,7 @@ __global__ void tiled_mat_mul_thread_coarsening(int* x, int* y, int* z, int M, i
 	__shared__ int B_s[TILE_DIM][TILE_DIM];
 
 	int row = blockIdx.y * blockDim.y + threadIdx.y;
-	int colStart = blockIdx.x * blockDim.x*COARSE_FACTOR + threadIdx.x;
+	int colStart = blockIdx.x * blockDim.x * COARSE_FACTOR + threadIdx.x;
 
 	int sum[COARSE_FACTOR] = {0,};
 
